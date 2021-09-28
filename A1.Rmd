@@ -1,0 +1,145 @@
+---
+title: "A1"
+author: "Brianny Martinez"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+knitr::opts_chunk$set(warning = F, message = F)
+library(tigris)
+library(tidyverse)
+library(sf)
+library(mapview)
+library(leaflet)
+library(censusapi)
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+```
+
+Loop
+```{r}
+years <- 2017:2021
+quarters <- 1:4
+types <- c("Electric","Gas")
+pge_data_original <- NULL
+for(year in years) {
+  for(quarter in quarters) {
+    for(type in types) {
+      
+      filename <- 
+        paste0(
+          "pge/PGE_",
+          year,
+          "_Q",
+          quarter,
+          "_",
+          type,
+          "UsageByZip.csv"
+        )
+  
+      if (year == 2021&quarter %in% 3:4){
+        next
+        }
+      
+      temp <- read_csv(filename)
+      
+      if(type == "Electric") {
+        temp <-
+          temp %>%
+          mutate(TOTALKBTU = TOTALKWH * 3.41214) %>%
+          select(-TOTALKWH, -AVERAGEKWH)
+      }
+      if(type == "Gas") {
+        temp <-
+          temp %>%
+          mutate(TOTALKBTU = TOTALTHM * 100) %>%
+          select(-TOTALTHM, -AVERAGETHM)
+      }
+      
+      pge_data_original <- 
+        rbind(pge_data_original,temp)
+      
+    }
+  }
+}
+```
+Manipulating Data
+```{r}
+pge_data <-
+  pge_data_original %>% 
+  filter(
+    CUSTOMERCLASS %in% c("Elec- Commercial","Elec- Residential", "Gas- Commercial", "Gas- Residential")
+  ) %>% 
+  group_by(
+    MONTH, 
+    YEAR, 
+    CUSTOMERCLASS
+  ) %>% 
+  summarize(
+    TOTALKBTU = sum(TOTALKBTU, na.rm = T)
+  ) %>% 
+  mutate(
+    DATE = 
+      paste(
+        YEAR,
+        MONTH, 
+        "01",
+        sep="-"
+      ) %>% as.Date()
+  )
+```
+Plotting 
+```{r}
+pge_chart_residential <-
+  pge_data %>% 
+  filter(CUSTOMERCLASS %in% c("Elec- Residential", "Gas- Residential")) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = MONTH %>% factor(),
+      y = TOTALKBTU,
+      fill = CUSTOMERCLASS
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "MONTH",
+    y = "KBTU",
+    title = "Residential Usage",
+    fill = "Electricity"
+  )
+
+pge_chart_residential
+```
+The chart above shows the average residential usage of electricity and gas by month.The PGE data used is from 2017 to the latest quarters of 2021. Usage of gas is at its highest during the winter months when heating is used in homes. Between 2019 and 2020, the average use of both electricity and gas must have increased dramatically in comparison to other years. With people working from home, energy consumption was peaking and causing shortages. 
+```{r}
+pge_chart_commercial <-
+  pge_data %>% 
+  filter(CUSTOMERCLASS %in% c("Elec- Commercial", "Gas- Commercial")) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = MONTH %>% factor(),
+      y = TOTALKBTU,
+      fill = CUSTOMERCLASS
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "MONTH",
+    y = "KBTUS",
+    title = "Commercial Usage",
+    fill = "Electricity"
+  )
+pge_chart_commercial
+```
+The chart above represents the commercial usage of electricity and gas by month. The PGE data used is from 2017 to the latest quarters of 2021. The overall consumption of energy seems to be lower than the plot for residential usage which coincides with the pandemic causing people to spend their days at home instead of residential buildings. 
